@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>CRUD - Banco do Aluno</title>
+<style>
+  body { font-family: Arial, sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; background: #f5f5f5; }
+  h1 { color: #333; }
+  input { padding: 8px; margin: 4px 0; width: 100%; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
+  input[readonly] { background: #eee; color: #888; }
+  label { font-size: 12px; color: #666; display: block; margin-top: 8px; }
+  .botoes { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+  button { padding: 10px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold; }
+  .b-listar  { background: #4CAF50; color: white; }
+  .b-inserir { background: #2196F3; color: white; }
+  .b-buscar  { background: #9C27B0; color: white; }
+  .b-atualiz { background: #FF9800; color: white; }
+  .b-deletar { background: #f44336; color: white; }
+  .b-limpar  { background: #9E9E9E; color: white; }
+  #status { margin-top: 12px; padding: 10px; border-radius: 4px; font-size: 13px; display: none; }
+  .ok  { background: #e8f5e9; color: #2e7d32; border: 1px solid #a5d6a7; display: block !important; }
+  .err { background: #ffebee; color: #c62828; border: 1px solid #ef9a9a; display: block !important; }
+  hr { margin: 24px 0; border: none; border-top: 1px solid #ddd; }
+  table { width: 100%; border-collapse: collapse; background: white; border-radius: 4px; overflow: hidden; margin-top: 12px; }
+  th { background: #333; color: white; padding: 10px; text-align: left; font-size: 12px; }
+  td { padding: 10px; border-bottom: 1px solid #eee; font-size: 13px; }
+  tr:last-child td { border-bottom: none; }
+  .bedit { background: #FF9800; color: white; border: none; padding: 4px 10px; border-radius: 3px; cursor: pointer; }
+  .bdel  { background: #f44336; color: white; border: none; padding: 4px 10px; border-radius: 3px; cursor: pointer; }
+  #url-debug { font-size: 11px; color: #888; word-break: break-all; margin-top: 8px; display: none; }
+</style>
+</head>
+<body>
+
+<h1>📋 CRUD — Banco do Aluno</h1>
+<p style="color:#666;font-size:13px">API: <b>https://technoworks.com.br/rest/{RA}</b> &nbsp;|&nbsp; REST completo (GET, POST, PUT, DELETE)</p>
+
+<hr>
+
+<label>RA (Registro do Aluno) *</label>
+<input id="ra" placeholder="Digite seu RA aqui">
+
+<label>ID do Documento (preenchido automaticamente após inserir/buscar)</label>
+<input id="id" placeholder="Ex: xK9mP2qR" readonly>
+
+<label>Nome *</label>
+<input id="nome" placeholder="Nome completo">
+
+<label>Endereço</label>
+<input id="end" placeholder="Rua, número, cidade">
+
+<label>Telefone</label>
+<input id="tel" placeholder="(11) 91234-5678">
+
+<label>E-mail</label>
+<input id="email" placeholder="exemplo@email.com">
+
+<div class="botoes">
+  <button class="b-listar"  onclick="listar()">📋 Listar</button>
+  <button class="b-inserir" onclick="inserir()">➕ Inserir</button>
+  <button class="b-buscar"  onclick="buscarId()">🔍 Buscar ID</button>
+  <button class="b-atualiz" onclick="atualizar()">✏️ Atualizar</button>
+  <button class="b-deletar" onclick="deletar()">🗑️ Deletar</button>
+  <button class="b-limpar"  onclick="limpar()">🧹 Limpar</button>
+</div>
+
+<div id="status"></div>
+<div id="url-debug"></div>
+
+<div id="tabela"></div>
+
+<script>
+// ─── URL base correta conforme documentação ─────────────────────────
+const BASE = 'https://technoworks.com.br/rest/';
+
+// ─── Helpers ────────────────────────────────────────────────────────
+const val = id => document.getElementById(id).value.trim();
+const set = (id, v) => document.getElementById(id).value = v ?? '';
+
+function msg(texto, tipo) {
+  const el = document.getElementById('status');
+  el.textContent = texto;
+  el.className = tipo;
+}
+
+function mostraUrl(metodo, url) {
+  const el = document.getElementById('url-debug');
+  el.style.display = 'block';
+  el.textContent = `→ ${metodo} ${url}`;
+}
+
+// Faz a requisição e já extrai o campo "dados" da resposta
+// Resposta da API: { "status": "ok", "dados": [...] }
+async function chamaAPI(metodo, url, body) {
+  mostraUrl(metodo, url);
+  msg('⏳ Aguarde...', 'ok');
+
+  const opts = { method: metodo, headers: { 'Content-Type': 'application/json' } };
+  if (body) opts.body = JSON.stringify(body);
+
+  const resp  = await fetch(url, opts);
+  const texto = await resp.text();
+  let json;
+  try { json = JSON.parse(texto); } catch { json = null; }
+
+  // A API envolve tudo em { status, dados } — extraímos "dados"
+  const dados = json?.dados ?? json;
+  return { ok: resp.ok, dados, texto };
+}
+
+// ─── LISTAR: GET /rest/{ra} ─────────────────────────────────────────
+async function listar() {
+  const ra = val('ra');
+  if (!ra) { msg('⚠ Informe o RA!', 'err'); return; }
+
+  const { ok, dados, texto } = await chamaAPI('GET', `${BASE}${ra}?limite=50`);
+  if (!ok) { msg('Erro: ' + texto, 'err'); return; }
+
+  const lista = Array.isArray(dados) ? dados : (dados ? [dados] : []);
+  msg(`✅ ${lista.length} registro(s) encontrado(s).`, 'ok');
+  renderTabela(lista);
+}
+
+// ─── INSERIR: POST /rest/{ra} ────────────────────────────────────────
+async function inserir() {
+  const ra = val('ra');
+  if (!ra)          { msg('⚠ Informe o RA!', 'err'); return; }
+  if (!val('nome')) { msg('⚠ Nome é obrigatório!', 'err'); return; }
+
+  const body = { nome: val('nome'), endereco: val('end'), telefone: val('tel'), email: val('email') };
+  const { ok, dados, texto } = await chamaAPI('POST', `${BASE}${ra}`, body);
+  if (!ok) { msg('Erro: ' + texto, 'err'); return; }
+
+  const novoId = dados?.id;
+  if (novoId) set('id', novoId);
+  msg('✅ Inserido! ID: ' + (novoId || '?'), 'ok');
+  listar();
+}
+
+// ─── BUSCAR POR ID: GET /rest/{ra}/{id} ─────────────────────────────
+async function buscarId() {
+  const ra = val('ra'), id = val('id');
+  if (!ra) { msg('⚠ Informe o RA!', 'err'); return; }
+  if (!id) { msg('⚠ Informe o ID!', 'err'); return; }
+
+  const { ok, dados } = await chamaAPI('GET', `${BASE}${ra}/${id}`);
+  if (!ok || !dados) { msg('Documento não encontrado.', 'err'); return; }
+
+  set('nome',  dados.nome     || '');
+  set('end',   dados.endereco || '');
+  set('tel',   dados.telefone || '');
+  set('email', dados.email    || '');
+  msg('✅ Documento carregado!', 'ok');
+}
+
+// ─── ATUALIZAR: PUT /rest/{ra}/{id} com body JSON ───────────────────
+async function atualizar() {
+  const ra = val('ra'), id = val('id');
+  if (!ra) { msg('⚠ Informe o RA!', 'err'); return; }
+  if (!id) { msg('⚠ Informe o ID!', 'err'); return; }
+
+  const body = { nome: val('nome'), endereco: val('end'), telefone: val('tel'), email: val('email') };
+  const { ok, texto } = await chamaAPI('PUT', `${BASE}${ra}/${id}`, body);
+  msg(ok ? '✅ Atualizado!' : 'Erro: ' + texto, ok ? 'ok' : 'err');
+  if (ok) listar();
+}
+
+// ─── DELETAR: DELETE /rest/{ra}/{id} ────────────────────────────────
+async function deletar() {
+  const ra = val('ra'), id = val('id');
+  if (!ra) { msg('⚠ Informe o RA!', 'err'); return; }
+  if (!id) { msg('⚠ Informe o ID!', 'err'); return; }
+  if (!confirm('Deletar o registro ID: ' + id + '?')) return;
+
+  const { ok, texto } = await chamaAPI('DELETE', `${BASE}${ra}/${id}`);
+  msg(ok ? '✅ Deletado!' : 'Erro: ' + texto, ok ? 'ok' : 'err');
+  if (ok) { limpar(); listar(); }
+}
+
+// ─── LIMPAR ─────────────────────────────────────────────────────────
+function limpar() {
+  ['id','nome','end','tel','email'].forEach(i => set(i, ''));
+  document.getElementById('status').className = '';
+  document.getElementById('status').textContent = '';
+  document.getElementById('url-debug').style.display = 'none';
+  document.getElementById('tabela').innerHTML = '';
+}
+
+// ─── RENDERIZA TABELA ────────────────────────────────────────────────
+function renderTabela(lista) {
+  if (!lista.length) {
+    document.getElementById('tabela').innerHTML = '<p style="color:#999;margin-top:12px">Nenhum registro.</p>';
+    return;
+  }
+  const linhas = lista.map(d => {
+    const id    = d.id || '-';
+    const nome  = d.nome     || '-';
+    const end   = d.endereco || '-';
+    const tel   = d.telefone || '-';
+    const email = d.email    || '-';
+    return `<tr>
+      <td style="font-size:10px;color:#999">${id}</td>
+      <td><b>${nome}</b></td>
+      <td>${end}</td>
+      <td>${tel}</td>
+      <td>${email}</td>
+      <td>
+        <button class="bedit" onclick="carregar('${id}','${nome}','${end}','${tel}','${email}')">editar</button>
+        <button class="bdel"  onclick="set('id','${id}');deletar()">del</button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('tabela').innerHTML = `
+    <table>
+      <thead><tr><th>ID</th><th>Nome</th><th>Endereço</th><th>Telefone</th><th>E-mail</th><th>Ações</th></tr></thead>
+      <tbody>${linhas}</tbody>
+    </table>`;
+}
+
+function carregar(id, nome, end, tel, email) {
+  set('id', id); set('nome', nome); set('end', end); set('tel', tel); set('email', email);
+  window.scrollTo(0, 0);
+}
+</script>
+</body>
+</html>
